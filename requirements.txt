@@ -1,0 +1,9 @@
+PyPDF2
+sentence-transformers
+chromadb
+langchain
+langchain-groq
+python-dotenv
+streamlit
+pycryptodome
+flashrank

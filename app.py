@@ -5,9 +5,11 @@ import chromadb
 from sentence_transformers import SentenceTransformer
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
+from flashrank import Ranker, RerankRequest
 
 load_dotenv()
-model = SentenceTransformer('all.MiniLM-L6-v2')
+model = SentenceTransformer('all-MiniLM-L6-v2')
+llm = ChatGroq(model="llama-3.3-70b-versatile")
 
 def read_pdf(file_name) :
     pdf_file = open(file_name, 'rb')
@@ -28,8 +30,8 @@ def split_text(pages):
     for page_data in pages:
         text = page_data["text"]
         
-        for i in range(0, len(text), 500):
-            chunk = text[i:i+500]
+        for i in range(0, len(text), 1000):
+            chunk = text[i:i+1000]
             chunks.append({
                 "text" : chunk,
                 "page" : page_data["page"],
@@ -83,14 +85,42 @@ def search(question, collection):
     question_vector = model.encode(question)
     results = collection.query(
         query_embeddings=[question_vector.tolist()],
-        n_results=3
+        n_results=5
     )
     if not results['documents'] or not results['documents'][0]:
         return None
     return results
 
-def get_answer(question, results):
-    context = " ".join(results['documents'][0])
-    llm = ChatGroq(model="llama-3.3-70b-versatile")    
+def get_answer(question, reranked):
+    context = ""
+    for result in reranked:
+        source = result['meta']['source']
+        page = result['meta']['page']
+        context += f"\n[From {source}, Page {page}]:\n{result['text']}\n"
     
+    prompt = f"""You are a semiconductor technical expert.
+    Use this context to answer the question. 
+    If a direct answer exists in the context, use it. Do not calculate or estimate.
+    Context: {context}
+    Question: {question}
+    At the end cite all sources used."""
+    answer = llm.invoke(prompt) 
+    return answer.content
+
+def rerank(question,results):    
+    ranker = Ranker()
+    passages = []
+
+    for i, doc in enumerate(results['documents'][0]):    
+        passages.append({
+            "id" : i,
+            "text": doc,
+            "meta": {
+                "source": results['metadatas'][0][i]['source'],
+                "page": results['metadatas'][0][i]['page']}
+        })
+
+    request = RerankRequest(query=question, passages=passages)
+    reranked = ranker.rerank(request)
     
+    return reranked
