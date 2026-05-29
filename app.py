@@ -77,3 +77,20 @@ def store_vectors(chunks,vectors):
         
     )
     return collection
+
+
+def search(question, collection):
+    question_vector = model.encode(question)
+    results = collection.query(
+        query_embeddings=[question_vector.tolist()],
+        n_results=3
+    )
+    if not results['documents'] or not results['documents'][0]:
+        return None
+    return results
+
+def get_answer(question, results):
+    context = " ".join(results['documents'][0])
+    llm = ChatGroq(model="llama-3.3-70b-versatile")    
+    
+    
